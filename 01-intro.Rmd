@@ -1,0 +1,114 @@
+# Generalized Additive Mixed Models
+
+```{r}
+library(tidyverse)
+theme_set(theme_bw())
+library(mgcv)
+```
+
+
+The utility of GAMMs for estimating lifespan brain trajectories is described in @fjell2010 and @sorensen2021. The main R packages for GAMMs are `mgcv` and `gamm4`.
+
+## Scanner/batch effects
+
+A common problem is that longitudinal data have been collected on different scanners. There can be systematic differences between values estimated on different scanners, and they can have different noise levels. This chapter shows how to correct for both of these effects, meaning that such scanner difference won't have any biasing effect on the parameter estimates. 
+
+We will simulate some data to illustrate the problem.
+
+```{r}
+scanners <- letters[1:4]
+scanner_bias <- c(0, 1, .4, .2)
+scanner_noise <- c(1, 1, 2, .5)
+names(scanner_bias) <- names(scanner_noise) <- scanners
+n <- 1000
+
+set.seed(9988)
+dat <- tibble(
+  id = seq_len(n), 
+  time = 0,
+  random_intercept = rnorm(n)
+  ) %>% 
+  mutate(num_observations = sample(1:3, size = nrow(.), replace = TRUE)) %>% 
+  uncount(num_observations) %>% 
+  group_by(id) %>% 
+  mutate(timepoint = row_number()) %>% 
+  ungroup() %>% 
+  mutate(
+    time = if_else(timepoint == 1, time, runif(nrow(.), max = .5)),
+    scanner = factor(sample(scanners, size = nrow(.), replace = TRUE))
+    ) %>% 
+  group_by(id) %>% 
+  mutate(time = cumsum(time)) %>% 
+  ungroup() %>% 
+  mutate(
+    noise = rnorm(nrow(.), sd = scanner_noise[scanner]),
+    bias = scanner_bias[scanner],
+    y = 0.2 * time^11 * (10 * (1 - time))^6 + 10 * 
+      (10 * time)^3 * (1 - time)^10 + bias + noise + random_intercept
+  ) %>% 
+  select(-noise, -bias, -timepoint)
+
+```
+
+Here is a spaghetti plot of the data.
+
+```{r}
+ggplot(dat, aes(x = time, y = y, group = id)) + 
+  geom_line(alpha = .3) + 
+  geom_point(aes(color = scanner))
+```
+
+
+
+There are two ways of correcting for scanner bias. We can either include scanner as a fixed effect, or we can include it as a random effect. With as few as 4 scanners this will not make much of a difference in practice, but the interpretations of the models are a bit difference. With *fixed effects* we are interested in the specific scanners in this study, and want to estimater *their* bias. With *random effects* we would consider scanners as samples from some population of scanners, and our interest would be in the variation between scanners. Given the limited number of scanners, we use fixed effects in this example.
+
+```{r}
+mod1 <- gamm(y ~ s(time) + scanner, random = list(id =~ 1), 
+             data = dat)
+```
+
+We can plot the model fit.
+
+```{r}
+plot(mod1$gam)
+```
+
+And inspect the output. We that the `scanner` term has discovered that there are systematic differences between the scanners. It won't be exact, since this is a randoom sample, but it points in the right directions.
+
+```{r}
+summary(mod1$gam)
+```
+
+
+The model does however assume identical residuals, regardless of scanner. We can produce a diagnostic plot showing the residuals by scanner, which shows that this assumption is not correct (as we already new). In particular, scanner d has much lower residuals than scanner c.
+
+```{r}
+plot(mod1$lme, form = resid(., type = "pearson") ~ fitted(.) | scanner)
+```
+
+We can allow the residual standard deviation to differ between scanners.
+
+```{r}
+mod2 <- gamm(y ~ s(time) + scanner, random = list(id =~ 1), 
+             weights = varIdent(form = ~ 1  | scanner), data = dat)
+```
+
+Looking at the model output, under `Variance function:`, we see the multipliers for each scanner. 
+
+```{r}
+mod2$lme
+```
+
+The diagnostic plot looks more reasonable now.
+
+```{r}
+plot(mod2$lme, form = resid(., type = "pearson") ~ fitted(.) | scanner)
+```
+
+We can formally compare the models, and the second model wins.
+
+```{r}
+anova(mod1$lme, mod2$lme)
+```
+
+These corrections will only work if there is some amount of mixing between scanner and age/time. In contrast, if we had a longitudinal setting in which people at age 40 were scanned with a given scanner, and came back at age 45 for another session with a new scanner, then there would be no overlap between age and scanner, and we would not be able to distinguish age effects from scanner effects.

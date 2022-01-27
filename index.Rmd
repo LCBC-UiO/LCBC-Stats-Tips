@@ -1,0 +1,25 @@
+--- 
+title: "Statistics Tips"
+author: "Øystein Sørensen"
+date: "`r Sys.Date()`"
+site: bookdown::bookdown_site
+documentclass: book
+bibliography: [packages.bib, references.bib]
+# url: your book url like https://bookdown.org/yihui/bookdown
+# cover-image: path to the social sharing image like images/cover.jpg
+description: |
+  This book contains statistics and R tips.
+link-citations: yes
+github-repo: LCBC-UiO/LCBC-Stats-Tips
+---
+
+# About
+
+This book is intended to be an ever-growing repository of statistics tips and tricks for the [Center for Lifespan Changes in Brain and Cognition](https://www.oslobrains.no/). I may not be able to add appropriate references everywhere, but in general the books @wood2017a and @pinheiro2000 have been particularly useful for my own understanding.
+
+```{r include=FALSE}
+# automatically create a bib database for R packages
+knitr::write_bib(c(
+  .packages(), 'bookdown', 'knitr', 'rmarkdown'
+), 'packages.bib')
+```
