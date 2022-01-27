@@ -1,0 +1,3 @@
+about
+generalized-additive-mixed-models
+scannerbatch-effects
